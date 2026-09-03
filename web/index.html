@@ -19,6 +19,8 @@
       background: #38bdf8; border: 1px solid #0b1120; border-radius: 50%;
       width: 8px; height: 8px;
     }
+    /* Fake a dark basemap from standard (light) OSM tiles. */
+    .dark-tiles { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
   </style>
 </head>
 <body>
@@ -31,9 +33,13 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     const map = L.map('map', { worldCopyJump: true }).setView([20, 0], 2);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-      maxZoom: 18,
+    // Standard OSM tiles - free, no API key required. Inverted via CSS
+    // below for a dark look (CARTO's free dark tiles started requiring a
+    // key at some point after this was first written).
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19,
+      className: 'dark-tiles',
     }).addTo(map);
 
     const markers = new Map(); // mmsi -> L.CircleMarker

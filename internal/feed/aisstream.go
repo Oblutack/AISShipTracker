@@ -155,6 +155,23 @@ type shipStaticDataEnvelope struct {
 	} `json:"ShipStaticData"`
 }
 
+// standardClassBPositionReportEnvelope covers Class B transceivers - the
+// smaller units used by pleasure craft, fishing boats, tenders, etc.
+// Confirmed against live traffic to carry no NavigationalStatus field at
+// all (Class B units don't report it); PositionUpdate.NavStatus is set to
+// 15 ("Not defined") for these rather than defaulting to 0 ("Under way
+// using engine"), which would be a false claim.
+type standardClassBPositionReportEnvelope struct {
+	StandardClassBPositionReport struct {
+		UserID      int     `json:"UserID"`
+		Cog         float64 `json:"Cog"`
+		Sog         float64 `json:"Sog"`
+		TrueHeading int     `json:"TrueHeading"`
+		Latitude    float64 `json:"Latitude"`
+		Longitude   float64 `json:"Longitude"`
+	} `json:"StandardClassBPositionReport"`
+}
+
 func handleMessage(raw []byte, h Handler) {
 	// Uncomment while debugging a schema mismatch:
 	// log.Printf("feed: raw: %s", raw)
@@ -213,9 +230,35 @@ func handleMessage(raw []byte, h Handler) {
 			})
 		}
 
+	case "StandardClassBPositionReport":
+		var pr standardClassBPositionReportEnvelope
+		if err := json.Unmarshal(env.Message, &pr); err != nil {
+			log.Printf("feed: malformed StandardClassBPositionReport: %v", err)
+			return
+		}
+		mmsi := pr.StandardClassBPositionReport.UserID
+		if mmsi == 0 {
+			mmsi = env.MetaData.MMSI
+		}
+		if h.OnPosition != nil {
+			h.OnPosition(ais.PositionUpdate{
+				MMSI:       mmsi,
+				Latitude:   pr.StandardClassBPositionReport.Latitude,
+				Longitude:  pr.StandardClassBPositionReport.Longitude,
+				Cog:        pr.StandardClassBPositionReport.Cog,
+				Sog:        pr.StandardClassBPositionReport.Sog,
+				Heading:    pr.StandardClassBPositionReport.TrueHeading,
+				NavStatus:  15, // "Not defined" - Class B doesn't report this
+				ReceivedAt: now,
+			})
+		}
+
 	default:
-		// Other message types (e.g. StandardClassBPositionReport,
-		// StaticDataReport, AidsToNavigationReport, ...) aren't handled
-		// yet - safe to ignore for now.
+		// Other message types (e.g. StaticDataReport - Class B's split
+		// Part A/B static data, AidsToNavigationReport, ...) aren't
+		// handled yet - safe to ignore for now. StaticDataReport in
+		// particular would need buffering to join its Part A (name) and
+		// Part B (callsign/type/dimensions) messages per MMSI, since they
+		// arrive as separate messages - a bigger change than this pass.
 	}
 }

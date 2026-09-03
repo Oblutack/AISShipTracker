@@ -85,6 +85,44 @@ func TestHandleMessage_ShipStaticData(t *testing.T) {
 	}
 }
 
+// This payload shape is copied from a real message captured off the live
+// aisstream.io feed (unlike the other tests here, which were hand-built
+// from documentation before that was possible) - Class B units genuinely
+// omit NavigationalStatus entirely.
+func TestHandleMessage_StandardClassBPositionReport(t *testing.T) {
+	raw := []byte(`{
+		"MessageType": "StandardClassBPositionReport",
+		"MetaData": {"MMSI": 227005680, "ShipName": "PILOTINE I", "latitude": 42.69, "longitude": 9.45, "time_utc": "2026-01-01T00:00:00Z"},
+		"Message": {
+			"StandardClassBPositionReport": {
+				"UserID": 227005680,
+				"Cog": 63,
+				"Sog": 6,
+				"TrueHeading": 511,
+				"Latitude": 42.697,
+				"Longitude": 9.457,
+				"PositionAccuracy": true,
+				"Valid": true
+			}
+		}
+	}`)
+
+	var got ais.PositionUpdate
+	handleMessage(raw, Handler{
+		OnPosition: func(u ais.PositionUpdate) { got = u },
+	})
+
+	if got.MMSI != 227005680 {
+		t.Errorf("MMSI = %d, want 227005680", got.MMSI)
+	}
+	if got.Sog != 6 {
+		t.Errorf("Sog = %v, want 6", got.Sog)
+	}
+	if got.NavStatus != 15 {
+		t.Errorf("NavStatus = %d, want 15 (Not defined - Class B doesn't report this)", got.NavStatus)
+	}
+}
+
 func TestHandleMessage_UnknownTypeIsIgnored(t *testing.T) {
 	raw := []byte(`{"MessageType": "SomethingElse", "MetaData": {}, "Message": {}}`)
 	called := false
