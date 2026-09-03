@@ -27,7 +27,7 @@ func TestTypeLabel(t *testing.T) {
 		{70, "Cargo"},
 		{80, "Tanker"},
 		{60, "Passenger"},
-		{75, "Cargo"},  // reserved sub-code, falls back to group label
+		{75, "Cargo"}, // reserved sub-code, falls back to group label
 		{999, "Unknown"},
 	}
 	for _, c := range cases {

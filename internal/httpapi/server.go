@@ -4,7 +4,9 @@ package httpapi
 
 import (
 	"encoding/json"
+	"strconv"
 
+	"github.com/Oblutack/AISShipTracker/internal/ais"
 	"github.com/Oblutack/AISShipTracker/internal/hub"
 	"github.com/Oblutack/AISShipTracker/internal/store"
 	"github.com/gofiber/fiber/v2"
@@ -31,6 +33,63 @@ func New(st *store.Store, h *hub.Hub) *fiber.App {
 	// a WebSocket.
 	app.Get("/api/vessels", func(c *fiber.Ctx) error {
 		return c.JSON(st.List())
+	})
+
+	// Real position history for one vessel - the actual reported track,
+	// not a prediction. Fetched on-demand (not pushed over /ws) since
+	// broadcasting every vessel's full history on every tick would be
+	// enormous; the frontend fetches this only for a vessel the user
+	// has selected.
+	app.Get("/api/vessels/:mmsi/track", func(c *fiber.Ctx) error {
+		mmsi, err := strconv.Atoi(c.Params("mmsi"))
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "mmsi must be a number"})
+		}
+		return c.JSON(st.Track(mmsi))
+	})
+
+	// Best-effort INFERRED route from a vessel's current position to a
+	// destination guessed from its self-reported (free-text, unvalidated)
+	// AIS Destination field. This is not real data - see
+	// ais.InferredRouteNotice, also included in the response so any
+	// consumer has the disclaimer without needing to know to ask for it.
+	app.Get("/api/vessels/:mmsi/route", func(c *fiber.Ctx) error {
+		mmsi, err := strconv.Atoi(c.Params("mmsi"))
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "mmsi must be a number"})
+		}
+		v, ok := st.Get(mmsi)
+		if !ok {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "unknown vessel"})
+		}
+		if !v.HasPosition {
+			// A vessel can exist in the store from a static/voyage data
+			// message alone, before any position report ever arrives -
+			// Latitude/Longitude are the zero value (0,0 - "null island")
+			// in that case, not a real position. Using it as a route
+			// origin would silently draw a nonsense line from the Gulf
+			// of Guinea.
+			return c.JSON(fiber.Map{"matched": false, "reason": "vessel has no reported position yet"})
+		}
+		if v.Destination == "" {
+			return c.JSON(fiber.Map{"matched": false, "reason": "vessel has not reported a destination"})
+		}
+		port, ok := ais.MatchDestination(v.Destination)
+		if !ok {
+			return c.JSON(fiber.Map{
+				"matched":          false,
+				"reason":           "reported destination text did not match any known port",
+				"destination_text": v.Destination,
+			})
+		}
+		path := ais.GreatCirclePath(v.Latitude, v.Longitude, port.Lat, port.Lon, 60)
+		return c.JSON(fiber.Map{
+			"matched":          true,
+			"notice":           ais.InferredRouteNotice,
+			"destination_text": v.Destination,
+			"destination_port": port,
+			"path":             path,
+		})
 	})
 
 	app.Use("/ws", func(c *fiber.Ctx) error {

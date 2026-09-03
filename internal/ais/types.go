@@ -23,11 +23,11 @@ type Vessel struct {
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
 	// Cog: course over ground, degrees. Sog: speed over ground, knots.
-	Cog             float64 `json:"cog"`
-	Sog             float64 `json:"sog"`
-	Heading         int     `json:"heading"`
-	NavStatus       int     `json:"nav_status"`
-	NavStatusLabel  string  `json:"nav_status_label,omitempty"`
+	Cog            float64 `json:"cog"`
+	Sog            float64 `json:"sog"`
+	Heading        int     `json:"heading"`
+	NavStatus      int     `json:"nav_status"`
+	NavStatusLabel string  `json:"nav_status_label,omitempty"`
 
 	HasPosition bool      `json:"has_position"`
 	HasStatic   bool      `json:"has_static"`
@@ -46,6 +46,13 @@ type PositionUpdate struct {
 	Heading    int
 	NavStatus  int
 	ReceivedAt time.Time
+}
+
+// TrackPoint is one recorded position in a vessel's history.
+type TrackPoint struct {
+	Latitude  float64   `json:"lat"`
+	Longitude float64   `json:"lon"`
+	Time      time.Time `json:"time"`
 }
 
 // StaticUpdate carries only the fields a static/voyage data report can populate.

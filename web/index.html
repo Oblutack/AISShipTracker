@@ -43,6 +43,20 @@
     }).addTo(map);
 
     const markers = new Map(); // mmsi -> L.CircleMarker
+    const vesselData = new Map(); // mmsi -> latest vessel object, for re-rendering the popup on selection
+
+    // Only one vessel's trail/route is drawn at a time - drawing this for
+    // every tracked ship (thousands, globally) would be unusable clutter
+    // and a lot of extra fetches. Click a ship to inspect it.
+    let selectedMmsi = null;
+    let trailLine = null;
+    let routeLine = null;
+
+    function clearSelection() {
+      if (trailLine) { map.removeLayer(trailLine); trailLine = null; }
+      if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+      selectedMmsi = null;
+    }
 
     function popupHtml(v) {
       const name = v.name || `MMSI ${v.mmsi}`;
@@ -50,16 +64,49 @@
       const flag = v.flag || 'Unknown flag';
       const sog = typeof v.sog === 'number' ? v.sog.toFixed(1) : '-';
       const dest = v.destination || '-';
-      return `<b>${name}</b><br>${type} &middot; ${flag}<br>Speed: ${sog} kn<br>Destination: ${dest}<br><small>MMSI ${v.mmsi}</small>`;
+      return `<b>${name}</b><br>${type} &middot; ${flag}<br>Speed: ${sog} kn<br>Destination: ${dest}<br><small>MMSI ${v.mmsi} &middot; click marker for trail/route</small>`;
+    }
+
+    async function selectVessel(mmsi) {
+      clearSelection();
+      selectedMmsi = mmsi;
+
+      // Real position history - the ship's actual reported track.
+      try {
+        const track = await fetch(`/api/vessels/${mmsi}/track`).then(r => r.json());
+        if (Array.isArray(track) && track.length > 1) {
+          trailLine = L.polyline(track.map(p => [p.lat, p.lon]), {
+            color: '#38bdf8', weight: 2, opacity: 0.8,
+          }).addTo(map);
+        }
+      } catch (e) { console.error('track fetch failed', e); }
+
+      // INFERRED route: a straight great-circle guess to a best-effort
+      // matched destination, not a real reported path. Dashed + a
+      // different color specifically so it's never confused with the
+      // real trail above.
+      try {
+        const route = await fetch(`/api/vessels/${mmsi}/route`).then(r => r.json());
+        if (route && route.matched && Array.isArray(route.path)) {
+          routeLine = L.polyline(route.path.map(p => [p[0], p[1]]), {
+            color: '#f59e0b', weight: 2, opacity: 0.8, dashArray: '6 8',
+          }).addTo(map);
+          routeLine.bindPopup(
+            `<b>Inferred route</b><br>To: ${route.destination_port.name}<br><small>${route.notice}</small>`
+          );
+        }
+      } catch (e) { console.error('route fetch failed', e); }
     }
 
     function upsert(v) {
       if (!v || !v.latitude || !v.longitude) return;
+      vesselData.set(v.mmsi, v);
       let m = markers.get(v.mmsi);
       if (!m) {
         m = L.circleMarker([v.latitude, v.longitude], {
           radius: 4, color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.9, weight: 1,
         }).addTo(map);
+        m.on('click', () => selectVessel(v.mmsi));
         markers.set(v.mmsi, m);
       } else {
         m.setLatLng([v.latitude, v.longitude]);

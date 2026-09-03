@@ -17,16 +17,29 @@ import (
 	"github.com/Oblutack/AISShipTracker/internal/ais"
 )
 
+// Position history is deliberately sparse and bounded: a new point is only
+// recorded every trackMinInterval, and only the most recent trackMaxPoints
+// are kept per vessel. A ship broadcasts every few seconds - recording
+// every single report would be both wasteful (10,000+ vessels, unbounded
+// growth) and pointless (a trail this dense adds nothing visually over a
+// coarser one).
+const (
+	trackMinInterval = 30 * time.Second
+	trackMaxPoints   = 120 // ~1 hour of trail at the interval above
+)
+
 // Store is a thread-safe, in-memory cache of the latest known state per MMSI.
 type Store struct {
 	mu      sync.RWMutex
 	vessels map[int]*ais.Vessel
+	tracks  map[int][]ais.TrackPoint
 }
 
 // New creates an empty Store.
 func New() *Store {
 	return &Store{
 		vessels: make(map[int]*ais.Vessel),
+		tracks:  make(map[int][]ais.TrackPoint),
 	}
 }
 
@@ -48,7 +61,34 @@ func (s *Store) ApplyPosition(u ais.PositionUpdate) ais.Vessel {
 	v.HasPosition = true
 	v.LastUpdate = u.ReceivedAt
 
+	s.recordTrackPoint(u.MMSI, u.Latitude, u.Longitude, u.ReceivedAt)
+
 	return *v
+}
+
+// recordTrackPoint must be called with s.mu held. It appends a new track
+// point only if enough time has passed since the last recorded one, and
+// caps the stored history at trackMaxPoints (oldest dropped first).
+func (s *Store) recordTrackPoint(mmsi int, lat, lon float64, at time.Time) {
+	pts := s.tracks[mmsi]
+	if len(pts) > 0 && at.Sub(pts[len(pts)-1].Time) < trackMinInterval {
+		return
+	}
+	pts = append(pts, ais.TrackPoint{Latitude: lat, Longitude: lon, Time: at})
+	if len(pts) > trackMaxPoints {
+		pts = pts[len(pts)-trackMaxPoints:]
+	}
+	s.tracks[mmsi] = pts
+}
+
+// Track returns the recorded position history for one MMSI, oldest first.
+func (s *Store) Track(mmsi int) []ais.TrackPoint {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	pts := s.tracks[mmsi]
+	out := make([]ais.TrackPoint, len(pts))
+	copy(out, pts)
+	return out
 }
 
 // ApplyStatic merges a static/voyage data report into the vessel record for
@@ -122,6 +162,7 @@ func (s *Store) Prune(maxAge time.Duration) int {
 	for mmsi, v := range s.vessels {
 		if v.LastUpdate.Before(cutoff) {
 			delete(s.vessels, mmsi)
+			delete(s.tracks, mmsi)
 			removed++
 		}
 	}
