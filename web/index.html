@@ -92,7 +92,7 @@
             color: '#f59e0b', weight: 2, opacity: 0.8, dashArray: '6 8',
           }).addTo(map);
           routeLine.bindPopup(
-            `<b>Inferred route</b><br>To: ${route.destination_port.name}<br><small>${route.notice}</small>`
+            `<b>Inferred route</b><br>To: ${route.destination_port.name} (${route.destination_port.locode})<br><small>${route.notice}</small>`
           );
         }
       } catch (e) { console.error('route fetch failed', e); }
