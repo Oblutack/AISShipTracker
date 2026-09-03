@@ -50,6 +50,9 @@ func TestHandleMessage_PositionReport(t *testing.T) {
 	}
 }
 
+// The Dimension/MaximumStaticDraught values here are copied from a real
+// message captured off the live aisstream.io feed (a small Norwegian
+// vessel, "ABBE") - not hand-invented.
 func TestHandleMessage_ShipStaticData(t *testing.T) {
 	raw := []byte(`{
 		"MessageType": "ShipStaticData",
@@ -61,7 +64,9 @@ func TestHandleMessage_ShipStaticData(t *testing.T) {
 				"Name": "TEST VESSEL",
 				"CallSign": "LA1234",
 				"Type": 70,
-				"Destination": "ROTTERDAM"
+				"Destination": "ROTTERDAM",
+				"MaximumStaticDraught": 2.5,
+				"Dimension": {"A": 11, "B": 8, "C": 4, "D": 3}
 			}
 		}
 	}`)
@@ -82,6 +87,15 @@ func TestHandleMessage_ShipStaticData(t *testing.T) {
 	}
 	if got.Destination != "ROTTERDAM" {
 		t.Errorf("Destination = %q, want %q", got.Destination, "ROTTERDAM")
+	}
+	if got.LengthMeters != 19 { // A(11) + B(8)
+		t.Errorf("LengthMeters = %v, want 19", got.LengthMeters)
+	}
+	if got.BeamMeters != 7 { // C(4) + D(3)
+		t.Errorf("BeamMeters = %v, want 7", got.BeamMeters)
+	}
+	if got.DraughtMeters != 2.5 {
+		t.Errorf("DraughtMeters = %v, want 2.5", got.DraughtMeters)
 	}
 }
 

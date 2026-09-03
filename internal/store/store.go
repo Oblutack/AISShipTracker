@@ -110,6 +110,15 @@ func (s *Store) ApplyStatic(u ais.StaticUpdate) ais.Vessel {
 	v.ShipType = u.ShipType
 	v.TypeLabel = ais.TypeLabel(u.ShipType)
 	v.Destination = u.Destination
+	if u.LengthMeters != 0 {
+		v.LengthMeters = u.LengthMeters
+	}
+	if u.BeamMeters != 0 {
+		v.BeamMeters = u.BeamMeters
+	}
+	if u.DraughtMeters != 0 {
+		v.DraughtMeters = u.DraughtMeters
+	}
 	v.HasStatic = true
 	v.LastUpdate = u.ReceivedAt
 

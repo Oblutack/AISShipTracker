@@ -40,6 +40,28 @@ func TestApplyPosition_ThenStatic_Merges(t *testing.T) {
 	}
 }
 
+func TestApplyStatic_DimensionsDontClobberOnZero(t *testing.T) {
+	s := New()
+	s.ApplyStatic(ais.StaticUpdate{
+		MMSI: 1, LengthMeters: 19, BeamMeters: 7, DraughtMeters: 2.5, ReceivedAt: time.Now(),
+	})
+	v, _ := s.Get(1)
+	if v.LengthMeters != 19 || v.BeamMeters != 7 || v.DraughtMeters != 2.5 {
+		t.Fatalf("dimensions after first update = %v/%v/%v, want 19/7/2.5", v.LengthMeters, v.BeamMeters, v.DraughtMeters)
+	}
+
+	// A later static message with no dimension data (all zero - AIS's own
+	// "not available") must not erase the dimensions already known.
+	s.ApplyStatic(ais.StaticUpdate{MMSI: 1, Name: "RENAMED", ReceivedAt: time.Now()})
+	v, _ = s.Get(1)
+	if v.LengthMeters != 19 || v.BeamMeters != 7 || v.DraughtMeters != 2.5 {
+		t.Errorf("dimensions after blank update = %v/%v/%v, want unchanged 19/7/2.5", v.LengthMeters, v.BeamMeters, v.DraughtMeters)
+	}
+	if v.Name != "RENAMED" {
+		t.Errorf("Name = %q, want RENAMED (unrelated field should still update)", v.Name)
+	}
+}
+
 func TestPrune_RemovesOnlyStale(t *testing.T) {
 	s := New()
 	s.ApplyPosition(ais.PositionUpdate{MMSI: 1, ReceivedAt: time.Now().Add(-time.Hour)})

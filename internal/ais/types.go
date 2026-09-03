@@ -20,6 +20,15 @@ type Vessel struct {
 
 	Destination string `json:"destination,omitempty"`
 
+	// LengthMeters/BeamMeters are derived from AIS's four GPS-antenna
+	// offsets (A+B, C+D) - see the Dimension comment in aisstream.go.
+	// DraughtMeters is self-reported by the vessel. All three are 0 (and
+	// omitted from JSON) when the vessel hasn't reported static data yet,
+	// or reported all-zero dimensions - AIS's own "not available" case.
+	LengthMeters  float64 `json:"length_m,omitempty"`
+	BeamMeters    float64 `json:"beam_m,omitempty"`
+	DraughtMeters float64 `json:"draught_m,omitempty"`
+
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
 	// Cog: course over ground, degrees. Sog: speed over ground, knots.
@@ -57,11 +66,14 @@ type TrackPoint struct {
 
 // StaticUpdate carries only the fields a static/voyage data report can populate.
 type StaticUpdate struct {
-	MMSI        int
-	IMO         int
-	Name        string
-	CallSign    string
-	ShipType    int
-	Destination string
-	ReceivedAt  time.Time
+	MMSI          int
+	IMO           int
+	Name          string
+	CallSign      string
+	ShipType      int
+	Destination   string
+	LengthMeters  float64
+	BeamMeters    float64
+	DraughtMeters float64
+	ReceivedAt    time.Time
 }

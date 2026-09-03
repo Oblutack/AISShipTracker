@@ -95,6 +95,44 @@ func TestMatchDestination_NoMatch(t *testing.T) {
 	}
 }
 
+func TestAllPorts_ReturnsFullSortedDataset(t *testing.T) {
+	all := AllPorts()
+	if len(all) != len(byLocode) {
+		t.Fatalf("AllPorts() returned %d ports, want %d (len(byLocode))", len(all), len(byLocode))
+	}
+	for i := 1; i < len(all); i++ {
+		if all[i-1].Name > all[i].Name {
+			t.Fatalf("AllPorts() not sorted by name: %q comes before %q", all[i-1].Name, all[i].Name)
+		}
+	}
+}
+
+func TestSearchPorts(t *testing.T) {
+	byName := SearchPorts("rotterdam")
+	found := false
+	for _, p := range byName {
+		if p.Locode == "NLRTM" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("SearchPorts(\"rotterdam\") = %v, want it to include NLRTM", byName)
+	}
+
+	byCode := SearchPorts("nlrtm")
+	if len(byCode) == 0 || byCode[0].Locode != "NLRTM" {
+		t.Errorf("SearchPorts(\"nlrtm\") = %v, want NLRTM", byCode)
+	}
+
+	if got := SearchPorts(""); got != nil {
+		t.Errorf("SearchPorts(\"\") = %v, want nil", got)
+	}
+
+	if got := SearchPorts("e"); len(got) > maxSearchResults {
+		t.Errorf("SearchPorts(\"e\") returned %d results, want capped at %d", len(got), maxSearchResults)
+	}
+}
+
 // This is a known, deliberate limitation, not a bug: UN/LOCODE records
 // some ports under their native-language name rather than the common
 // English exonym (Napoli, not Naples; similarly Genova/Genoa, Lisboa/

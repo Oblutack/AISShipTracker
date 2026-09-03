@@ -3,6 +3,7 @@ package ais
 import (
 	_ "embed"
 	"encoding/csv"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -194,6 +195,44 @@ func MatchDestination(destination string) (Port, bool) {
 		}
 	}
 	return Port{}, false
+}
+
+// maxSearchResults caps SearchPorts' response size - a broad query (e.g.
+// a single common letter) could otherwise match thousands of entries.
+const maxSearchResults = 50
+
+// AllPorts returns every port in the loaded UN/LOCODE dataset (11,829 as
+// of the 2025 edition), sorted by name. This is real, authoritative data -
+// see the doc comment on portsCSV for its source, coverage, and the two
+// known gaps in it.
+func AllPorts() []Port {
+	out := make([]Port, 0, len(byLocode))
+	for _, p := range byLocode {
+		out = append(out, p)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// SearchPorts returns ports whose name or LOCODE contains the query
+// (case-insensitive), sorted by name and capped at maxSearchResults.
+// Returns nil for an empty/whitespace-only query.
+func SearchPorts(query string) []Port {
+	q := normalizeDestination(query)
+	if q == "" {
+		return nil
+	}
+	var out []Port
+	for _, p := range byLocode {
+		if strings.Contains(p.Name, q) || strings.Contains(p.Locode, q) {
+			out = append(out, p)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	if len(out) > maxSearchResults {
+		out = out[:maxSearchResults]
+	}
+	return out
 }
 
 // matchLocode recognizes a bare 5-letter code ("NLRTM") or a 2+3 code

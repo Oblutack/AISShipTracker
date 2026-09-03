@@ -146,12 +146,25 @@ type positionReportEnvelope struct {
 
 type shipStaticDataEnvelope struct {
 	ShipStaticData struct {
-		UserID      int    `json:"UserID"`
-		ImoNumber   int    `json:"ImoNumber"`
-		Name        string `json:"Name"`
-		CallSign    string `json:"CallSign"`
-		Type        int    `json:"Type"`
-		Destination string `json:"Destination"`
+		UserID               int     `json:"UserID"`
+		ImoNumber            int     `json:"ImoNumber"`
+		Name                 string  `json:"Name"`
+		CallSign             string  `json:"CallSign"`
+		Type                 int     `json:"Type"`
+		Destination          string  `json:"Destination"`
+		MaximumStaticDraught float64 `json:"MaximumStaticDraught"`
+		// Dimension gives the vessel's size as four offsets from its GPS
+		// antenna (ITU-R M.1371): A = antenna-to-bow, B = antenna-to-stern,
+		// C = antenna-to-port-side, D = antenna-to-starboard-side. So
+		// length overall = A+B, beam = C+D. Confirmed against live
+		// traffic (e.g. a real vessel with A:11 B:8 C:4 D:3 -> 19m x 7m,
+		// a plausible small craft).
+		Dimension struct {
+			A int `json:"A"`
+			B int `json:"B"`
+			C int `json:"C"`
+			D int `json:"D"`
+		} `json:"Dimension"`
 	} `json:"ShipStaticData"`
 }
 
@@ -219,14 +232,18 @@ func handleMessage(raw []byte, h Handler) {
 			mmsi = env.MetaData.MMSI
 		}
 		if h.OnStatic != nil {
+			dim := sd.ShipStaticData.Dimension
 			h.OnStatic(ais.StaticUpdate{
-				MMSI:        mmsi,
-				IMO:         sd.ShipStaticData.ImoNumber,
-				Name:        sd.ShipStaticData.Name,
-				CallSign:    sd.ShipStaticData.CallSign,
-				ShipType:    sd.ShipStaticData.Type,
-				Destination: sd.ShipStaticData.Destination,
-				ReceivedAt:  now,
+				MMSI:          mmsi,
+				IMO:           sd.ShipStaticData.ImoNumber,
+				Name:          sd.ShipStaticData.Name,
+				CallSign:      sd.ShipStaticData.CallSign,
+				ShipType:      sd.ShipStaticData.Type,
+				Destination:   sd.ShipStaticData.Destination,
+				LengthMeters:  float64(dim.A + dim.B),
+				BeamMeters:    float64(dim.C + dim.D),
+				DraughtMeters: sd.ShipStaticData.MaximumStaticDraught,
+				ReceivedAt:    now,
 			})
 		}
 

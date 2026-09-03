@@ -92,6 +92,20 @@ func New(st *store.Store, h *hub.Hub) *fiber.App {
 		})
 	})
 
+	// Real global port data - the same UN/LOCODE dataset the destination
+	// matcher uses (internal/ais/ports.go), not tied to anything currently
+	// being tracked. Free, no external API key, ~11,800 real ports. With
+	// no query it returns the full list (~700KB; static per process
+	// lifetime, hence the cache header); with ?q= it does a substring
+	// search over name/LOCODE, capped at 50 results.
+	app.Get("/api/ports", func(c *fiber.Ctx) error {
+		c.Set("Cache-Control", "public, max-age=86400")
+		if q := c.Query("q"); q != "" {
+			return c.JSON(ais.SearchPorts(q))
+		}
+		return c.JSON(ais.AllPorts())
+	})
+
 	app.Use("/ws", func(c *fiber.Ctx) error {
 		if websocket.IsWebSocketUpgrade(c) {
 			c.Locals("allowed", true)

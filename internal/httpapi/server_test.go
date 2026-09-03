@@ -91,3 +91,41 @@ func TestTrackEndpoint_ReturnsRecordedPoints(t *testing.T) {
 		t.Errorf("track length = %d, want 2", len(track))
 	}
 }
+
+func TestPortsEndpoint_NoQueryReturnsFullDataset(t *testing.T) {
+	st, _ := newTestApp()
+	req := httptest.NewRequest("GET", "/api/ports", nil)
+	resp, err := New(st, hub.New()).Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ports []ais.Port
+	if err := json.NewDecoder(resp.Body).Decode(&ports); err != nil {
+		t.Fatal(err)
+	}
+	if len(ports) != len(ais.AllPorts()) {
+		t.Errorf("GET /api/ports returned %d ports, want %d", len(ports), len(ais.AllPorts()))
+	}
+}
+
+func TestPortsEndpoint_QuerySearches(t *testing.T) {
+	st, _ := newTestApp()
+	req := httptest.NewRequest("GET", "/api/ports?q=rotterdam", nil)
+	resp, err := New(st, hub.New()).Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ports []ais.Port
+	if err := json.NewDecoder(resp.Body).Decode(&ports); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, p := range ports {
+		if p.Locode == "NLRTM" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("GET /api/ports?q=rotterdam = %v, want it to include NLRTM", ports)
+	}
+}

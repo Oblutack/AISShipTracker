@@ -21,6 +21,14 @@ trail and a best-effort inferred route to its destination.
   position reports).
 - **Flag** — derived locally from the vessel's MMSI (the first 3 digits are
   an ITU-assigned country code). Not part of the AIS message itself.
+- **Length, beam, draught** — from AIS static/voyage data. Length/beam are
+  derived from the four GPS-antenna offsets AIS actually reports (A/B/C/D -
+  antenna-to-bow/stern/port/starboard), not sent as a single number.
+  Confirmed against live traffic. Absent (omitted from JSON) for smaller
+  craft that don't report it, which is common - not every vessel does.
+- **Ports** — `GET /api/ports` serves the same real UN/LOCODE dataset the
+  destination matcher uses (~11,800 ports), independent of anything
+  currently being tracked. `?q=` does a substring search on name/LOCODE.
 - **Position trail** (`GET /api/vessels/:mmsi/track`) — real: the vessel's
   actual reported positions over time, throttled to one point per ~30s and
   capped at ~120 points per vessel.
@@ -67,7 +75,7 @@ internal/
 │              # history per MMSI
 ├── hub/       # WebSocket fan-out to connected browser clients
 └── httpapi/   # Fiber server: /health, /api/vessels, /api/vessels/:mmsi/
-               # {track,route}, /ws, static map page
+               # {track,route}, /api/ports, /ws, static map page
 web/
 └── index.html # single-file Leaflet map, no build step
 ```
@@ -96,7 +104,8 @@ to that one file, nothing downstream depends on this wire format.
 
 This is a standalone service — separate purpose, separate tech surface,
 separate repo from [NeptuneShipments](https://github.com/Oblutack/NeptuneShipments)
-(a simulated fleet-management ERP). The two can optionally be wired
-together later: this service's `/ws` feed could be consumed by
-NeptuneShipments' map as a "live traffic" overlay alongside its simulated
-fleet, without sharing a database or git history.
+(a simulated fleet-management ERP). NeptuneShipments' map has an optional
+"AIS Live" layer that connects directly to this service's `/ws` feed and
+renders real ships alongside its simulated fleet - no shared database, no
+shared git history, just a WebSocket connection. This service has to be
+running for that layer to show anything.
