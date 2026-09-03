@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>AIS Ship Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body { margin: 0; height: 100%; background: #0b1120; }
+    #map { position: absolute; inset: 0; }
+    #hud {
+      position: absolute; top: 12px; left: 12px; z-index: 1000;
+      background: rgba(15, 23, 42, 0.85); color: #e2e8f0;
+      font: 13px/1.4 system-ui, sans-serif; padding: 10px 14px;
+      border-radius: 8px; border: 1px solid #334155;
+    }
+    #hud b { color: #38bdf8; }
+    .vessel-icon {
+      background: #38bdf8; border: 1px solid #0b1120; border-radius: 50%;
+      width: 8px; height: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    Status: <b id="status">connecting...</b><br />
+    Vessels tracked: <b id="count">0</b>
+  </div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map', { worldCopyJump: true }).setView([20, 0], 2);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+      maxZoom: 18,
+    }).addTo(map);
+
+    const markers = new Map(); // mmsi -> L.CircleMarker
+
+    function popupHtml(v) {
+      const name = v.name || `MMSI ${v.mmsi}`;
+      const type = v.type_label || 'Unknown type';
+      const flag = v.flag || 'Unknown flag';
+      const sog = typeof v.sog === 'number' ? v.sog.toFixed(1) : '-';
+      const dest = v.destination || '-';
+      return `<b>${name}</b><br>${type} &middot; ${flag}<br>Speed: ${sog} kn<br>Destination: ${dest}<br><small>MMSI ${v.mmsi}</small>`;
+    }
+
+    function upsert(v) {
+      if (!v || !v.latitude || !v.longitude) return;
+      let m = markers.get(v.mmsi);
+      if (!m) {
+        m = L.circleMarker([v.latitude, v.longitude], {
+          radius: 4, color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.9, weight: 1,
+        }).addTo(map);
+        markers.set(v.mmsi, m);
+      } else {
+        m.setLatLng([v.latitude, v.longitude]);
+      }
+      m.bindPopup(popupHtml(v));
+      document.getElementById('count').textContent = markers.size;
+    }
+
+    function connect() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+      ws.onopen = () => { document.getElementById('status').textContent = 'live'; };
+      ws.onclose = () => {
+        document.getElementById('status').textContent = 'disconnected - retrying...';
+        setTimeout(connect, 2000);
+      };
+      ws.onerror = () => ws.close();
+
+      ws.onmessage = (evt) => {
+        const msg = JSON.parse(evt.data);
+        if (msg.type === 'SNAPSHOT') {
+          (msg.data || []).forEach(upsert);
+        } else if (msg.type === 'POSITION_UPDATE' || msg.type === 'STATIC_UPDATE') {
+          upsert(msg.data);
+        }
+      };
+    }
+
+    connect();
+  </script>
+</body>
+</html>
