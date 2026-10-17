@@ -62,6 +62,37 @@ func TestApplyStatic_DimensionsDontClobberOnZero(t *testing.T) {
 	}
 }
 
+// A StaticDataReport (AIS type 24) arrives as two separate partial
+// updates per vessel - a Part A carrying only Name, and a Part B
+// carrying only ShipType/CallSign/dimensions, never both at once, and
+// neither ever carries Destination. Each partial update must merge into
+// whatever's already known instead of zeroing out the fields it doesn't
+// carry - this was a real bug (ShipType/Destination used to be assigned
+// unconditionally) that a lone Part A would have silently erased a
+// vessel's previously-known type.
+func TestApplyStatic_TypeAndDestinationDontClobberOnZero(t *testing.T) {
+	s := New()
+	s.ApplyStatic(ais.StaticUpdate{
+		MMSI: 1, ShipType: 70, Destination: "ROTTERDAM", ReceivedAt: time.Now(),
+	})
+	v, _ := s.Get(1)
+	if v.ShipType != 70 || v.TypeLabel != "Cargo" || v.Destination != "ROTTERDAM" {
+		t.Fatalf("after first update: ShipType=%d TypeLabel=%q Destination=%q, want 70/Cargo/ROTTERDAM",
+			v.ShipType, v.TypeLabel, v.Destination)
+	}
+
+	// A StaticDataReport Part A: name only, no type or destination data.
+	s.ApplyStatic(ais.StaticUpdate{MMSI: 1, Name: "RENAMED", ReceivedAt: time.Now()})
+	v, _ = s.Get(1)
+	if v.ShipType != 70 || v.TypeLabel != "Cargo" || v.Destination != "ROTTERDAM" {
+		t.Errorf("after Part-A-shaped update: ShipType=%d TypeLabel=%q Destination=%q, want unchanged 70/Cargo/ROTTERDAM",
+			v.ShipType, v.TypeLabel, v.Destination)
+	}
+	if v.Name != "RENAMED" {
+		t.Errorf("Name = %q, want RENAMED (unrelated field should still update)", v.Name)
+	}
+}
+
 func TestPrune_RemovesOnlyStale(t *testing.T) {
 	s := New()
 	s.ApplyPosition(ais.PositionUpdate{MMSI: 1, ReceivedAt: time.Now().Add(-time.Hour)})

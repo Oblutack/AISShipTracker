@@ -107,9 +107,23 @@ func (s *Store) ApplyStatic(u ais.StaticUpdate) ais.Vessel {
 	if u.CallSign != "" {
 		v.CallSign = u.CallSign
 	}
-	v.ShipType = u.ShipType
-	v.TypeLabel = ais.TypeLabel(u.ShipType)
-	v.Destination = u.Destination
+	// ShipType and Destination used to be set unconditionally, which was
+	// fine while every static update came from a single ShipStaticData
+	// message carrying all fields at once. It stopped being fine once
+	// StaticDataReport (AIS type 24, Class B) started feeding in here too:
+	// that message type arrives as two separate halves per MMSI (Part A:
+	// name only, Part B: type/callsign/dimensions only, neither carries
+	// Destination at all), so a lone Part A update would otherwise zero
+	// out a ShipType/Destination already learned from an earlier message.
+	// 0/"" is AIS's own "not available" sentinel for both fields anyway,
+	// so skipping the write when empty loses nothing real.
+	if u.ShipType != 0 {
+		v.ShipType = u.ShipType
+		v.TypeLabel = ais.TypeLabel(u.ShipType)
+	}
+	if u.Destination != "" {
+		v.Destination = u.Destination
+	}
 	if u.LengthMeters != 0 {
 		v.LengthMeters = u.LengthMeters
 	}

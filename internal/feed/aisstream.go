@@ -185,6 +185,36 @@ type standardClassBPositionReportEnvelope struct {
 	} `json:"StandardClassBPositionReport"`
 }
 
+// staticDataReportEnvelope covers AIS message type 24 (Class B static
+// data), which - unlike ShipStaticData's single message carrying every
+// field - arrives as two separate halves per MMSI: Part A (ReportA, name
+// only) and Part B (ReportB, type/callsign/dimensions only), never both
+// at once. Confirmed against live traffic: the inactive half is present
+// in the JSON but zero-valued with Valid:false, so Valid (not PartNumber)
+// is what actually tells you whether a given half's fields mean anything.
+// AIS type 24 carries no Destination field at all - that only comes from
+// ShipStaticData (type 5).
+type staticDataReportEnvelope struct {
+	StaticDataReport struct {
+		UserID  int `json:"UserID"`
+		ReportA struct {
+			Valid bool   `json:"Valid"`
+			Name  string `json:"Name"`
+		} `json:"ReportA"`
+		ReportB struct {
+			Valid     bool   `json:"Valid"`
+			ShipType  int    `json:"ShipType"`
+			CallSign  string `json:"CallSign"`
+			Dimension struct {
+				A int `json:"A"`
+				B int `json:"B"`
+				C int `json:"C"`
+				D int `json:"D"`
+			} `json:"Dimension"`
+		} `json:"ReportB"`
+	} `json:"StaticDataReport"`
+}
+
 func handleMessage(raw []byte, h Handler) {
 	// Uncomment while debugging a schema mismatch:
 	// log.Printf("feed: raw: %s", raw)
@@ -270,12 +300,40 @@ func handleMessage(raw []byte, h Handler) {
 			})
 		}
 
+	case "StaticDataReport":
+		var sdr staticDataReportEnvelope
+		if err := json.Unmarshal(env.Message, &sdr); err != nil {
+			log.Printf("feed: malformed StaticDataReport: %v", err)
+			return
+		}
+		rep := sdr.StaticDataReport
+		mmsi := rep.UserID
+		if mmsi == 0 {
+			mmsi = env.MetaData.MMSI
+		}
+		if h.OnStatic != nil {
+			// Only one of ReportA/ReportB is actually populated per
+			// message (see the envelope's doc comment) - leave the
+			// other half's fields at their zero value. ApplyStatic
+			// treats zero/empty as "unknown, don't overwrite" for
+			// every one of these fields, so this partial update merges
+			// correctly with whatever's already known for this vessel
+			// instead of clobbering it.
+			u := ais.StaticUpdate{MMSI: mmsi, ReceivedAt: now}
+			if rep.ReportA.Valid {
+				u.Name = rep.ReportA.Name
+			}
+			if rep.ReportB.Valid {
+				u.CallSign = rep.ReportB.CallSign
+				u.ShipType = rep.ReportB.ShipType
+				u.LengthMeters = float64(rep.ReportB.Dimension.A + rep.ReportB.Dimension.B)
+				u.BeamMeters = float64(rep.ReportB.Dimension.C + rep.ReportB.Dimension.D)
+			}
+			h.OnStatic(u)
+		}
+
 	default:
-		// Other message types (e.g. StaticDataReport - Class B's split
-		// Part A/B static data, AidsToNavigationReport, ...) aren't
-		// handled yet - safe to ignore for now. StaticDataReport in
-		// particular would need buffering to join its Part A (name) and
-		// Part B (callsign/type/dimensions) messages per MMSI, since they
-		// arrive as separate messages - a bigger change than this pass.
+		// Other message types (e.g. AidsToNavigationReport) aren't
+		// handled yet - safe to ignore for now.
 	}
 }

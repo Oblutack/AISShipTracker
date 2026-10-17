@@ -137,6 +137,85 @@ func TestHandleMessage_StandardClassBPositionReport(t *testing.T) {
 	}
 }
 
+// These two payloads were captured directly off the live aisstream.io
+// feed (not hand-built from the generated model docs) - a real Part A
+// for MMSI 368122880 ("QUEEN CITY") and a real Part B for MMSI
+// 244039283. Confirms the Valid flags, not PartNumber, are what actually
+// says which half of the struct has real data - both ReportA and ReportB
+// are always present in the JSON, with the inactive half zeroed out.
+func TestHandleMessage_StaticDataReport_PartA(t *testing.T) {
+	raw := []byte(`{
+		"MessageType": "StaticDataReport",
+		"MetaData": {"MMSI": 368122880, "ShipName": "QUEEN CITY", "latitude": 48.75618, "longitude": -122.49938, "time_utc": "2026-10-17T16:08:49Z"},
+		"Message": {
+			"StaticDataReport": {
+				"MessageID": 24,
+				"PartNumber": false,
+				"UserID": 368122880,
+				"Valid": true,
+				"ReportA": {"Valid": true, "Name": "QUEEN CITY"},
+				"ReportB": {"Valid": false, "ShipType": 0, "CallSign": "", "Dimension": {"A": 0, "B": 0, "C": 0, "D": 0}}
+			}
+		}
+	}`)
+
+	var got ais.StaticUpdate
+	handleMessage(raw, Handler{
+		OnStatic: func(u ais.StaticUpdate) { got = u },
+	})
+
+	if got.MMSI != 368122880 {
+		t.Errorf("MMSI = %d, want 368122880", got.MMSI)
+	}
+	if got.Name != "QUEEN CITY" {
+		t.Errorf("Name = %q, want %q", got.Name, "QUEEN CITY")
+	}
+	if got.CallSign != "" || got.ShipType != 0 || got.LengthMeters != 0 || got.BeamMeters != 0 {
+		t.Errorf("Part A update should leave ReportB-only fields unset, got %+v", got)
+	}
+}
+
+func TestHandleMessage_StaticDataReport_PartB(t *testing.T) {
+	raw := []byte(`{
+		"MessageType": "StaticDataReport",
+		"MetaData": {"MMSI": 244039283, "ShipName": "", "latitude": 52.32949, "longitude": 5.54796, "time_utc": "2026-10-17T16:08:49Z"},
+		"Message": {
+			"StaticDataReport": {
+				"MessageID": 24,
+				"PartNumber": true,
+				"UserID": 244039283,
+				"Valid": true,
+				"ReportA": {"Valid": false, "Name": ""},
+				"ReportB": {"Valid": true, "ShipType": 36, "CallSign": "PH8769", "Dimension": {"A": 9, "B": 3, "C": 2, "D": 2}}
+			}
+		}
+	}`)
+
+	var got ais.StaticUpdate
+	handleMessage(raw, Handler{
+		OnStatic: func(u ais.StaticUpdate) { got = u },
+	})
+
+	if got.MMSI != 244039283 {
+		t.Errorf("MMSI = %d, want 244039283", got.MMSI)
+	}
+	if got.Name != "" {
+		t.Errorf("Part B update should leave Name unset, got %q", got.Name)
+	}
+	if got.CallSign != "PH8769" {
+		t.Errorf("CallSign = %q, want %q", got.CallSign, "PH8769")
+	}
+	if got.ShipType != 36 {
+		t.Errorf("ShipType = %d, want 36", got.ShipType)
+	}
+	if got.LengthMeters != 12 { // A(9) + B(3)
+		t.Errorf("LengthMeters = %v, want 12", got.LengthMeters)
+	}
+	if got.BeamMeters != 4 { // C(2) + D(2)
+		t.Errorf("BeamMeters = %v, want 4", got.BeamMeters)
+	}
+}
+
 func TestHandleMessage_UnknownTypeIsIgnored(t *testing.T) {
 	raw := []byte(`{"MessageType": "SomethingElse", "MetaData": {}, "Message": {}}`)
 	called := false

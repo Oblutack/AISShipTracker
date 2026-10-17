@@ -90,15 +90,29 @@ cap) means writing a second implementation, not touching any caller.
 ## The aisstream.io message schema — verified against real traffic
 
 `internal/feed/aisstream.go` parses aisstream.io's JSON messages. The
-`PositionReport`, `ShipStaticData`, and `StandardClassBPositionReport`
-struct definitions have been confirmed field-for-field against real live
-traffic (thousands of messages, zero parse errors). `StaticDataReport`
-(Class B's split Part A/Part B static data) is seen on the wire but not
-yet decoded - it would need buffering to join its two halves per MMSI,
-since they arrive as separate messages. If you extend this and vessels
-aren't parsing as expected, uncomment the raw-payload log line in
-`handleMessage` and compare against the struct tags - a fix stays isolated
-to that one file, nothing downstream depends on this wire format.
+`PositionReport`, `ShipStaticData`, `StandardClassBPositionReport`, and
+`StaticDataReport` struct definitions have all been confirmed
+field-for-field against real live traffic (thousands of messages, zero
+parse errors). If you extend this and vessels aren't parsing as expected,
+uncomment the raw-payload log line in `handleMessage` and compare against
+the struct tags - a fix stays isolated to that one file, nothing
+downstream depends on this wire format.
+
+`StaticDataReport` (Class B's split Part A/Part B static data, ~8% of
+real live traffic) arrives as two separate messages per MMSI - a Part A
+carrying only the vessel's name, a Part B carrying type/callsign/
+dimensions, never both at once. Rather than buffer and join the two
+halves in the feed layer, each part is emitted as its own partial
+`ais.StaticUpdate` (only the fields that part actually carries are set)
+and left to `store.ApplyStatic`'s existing per-field merge to assemble
+over time - the same mechanism that already lets position and static
+updates arrive independently without clobbering each other. This needed
+one real fix in `store.go`: `ShipType` and `Destination` used to be
+written unconditionally on every static update, which was harmless when
+every update came from one `ShipStaticData` message carrying every field
+at once, but would have let a lone Part A silently zero out a vessel's
+already-known type. Both fields now follow the same "zero/empty means
+unknown, don't overwrite" rule the dimension fields already used.
 
 ## Companion project
 
